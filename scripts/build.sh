@@ -133,6 +133,27 @@ build_autotools() {
   popd >/dev/null
 }
 
+build_vorbis() {
+  local source_path="$1"
+  pushd "$source_path" >/dev/null
+  if [[ -n "$host_arg" ]]; then
+    ./configure --prefix="$prefix" "$host_arg" --disable-shared --enable-static \
+      --with-ogg="$prefix" --disable-examples --disable-docs
+  else
+    ./configure --prefix="$prefix" --disable-shared --enable-static \
+      --with-ogg="$prefix" --disable-examples --disable-docs
+  fi
+
+  # The upstream aggregate target also links test_sharedbook with a legacy
+  # Apple linker flag. Build only the libraries consumed by FFmpeg; the
+  # extended-profile verification performs an actual Vorbis round trip.
+  make -C lib -j"$jobs"
+  make -C include install
+  make -C lib install
+  make install-pkgconfigDATA
+  popd >/dev/null
+}
+
 if [[ "$profile" == "extended" ]]; then
   extract_archive "mbedtls-3.6.7.tar.bz2"
   extract_archive "lame-3.100.tar.gz"
@@ -162,7 +183,7 @@ if [[ "$profile" == "extended" ]]; then
 
   build_autotools "$lame_source" --disable-frontend --disable-decoder
   build_autotools "$ogg_source"
-  build_autotools "$vorbis_source" --with-ogg="$prefix" --disable-examples --disable-docs
+  build_vorbis "$vorbis_source"
   build_autotools "$opus_source" --disable-doc --disable-extra-programs
 
   mkdir -p "$build_root/libvpx"
