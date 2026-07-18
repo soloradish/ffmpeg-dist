@@ -70,6 +70,7 @@ ffmpeg_target_args=()
 vpx_target=""
 extra_cflags=""
 extra_ldflags=""
+extra_libs=""
 
 case "$target" in
   windows-x86_64)
@@ -81,6 +82,9 @@ case "$target" in
     vpx_target=x86_64-win64-gcc
     extra_cflags="-D_WIN32_WINNT=0x0A00"
     extra_ldflags="-static -static-libgcc"
+    # Mbed TLS links these Windows system libraries, but its generated
+    # pkg-config files do not expose them for static consumers.
+    extra_libs="-lws2_32 -lbcrypt"
     ;;
   macos-aarch64)
     cc=clang
@@ -254,6 +258,9 @@ if [[ "$profile" == "core" && -n "$extra_cflags" ]]; then
 fi
 if [[ "$profile" == "core" && -n "$extra_ldflags" ]]; then
   configure_args+=("--extra-ldflags=$extra_ldflags")
+fi
+if [[ "$profile" == "extended" && -n "$extra_libs" ]]; then
+  configure_args+=("--extra-libs=$extra_libs")
 fi
 
 printf '%s\n' "${configure_args[@]}" > "$configure_args_file"
