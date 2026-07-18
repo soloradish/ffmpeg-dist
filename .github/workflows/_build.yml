@@ -1,0 +1,132 @@
+name: Reusable build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    name: Verify source inputs
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - name: Validate locks
+        run: npm run validate:locks
+      - name: Download and verify locked sources
+        run: node scripts/fetch-sources.mjs --output source-archives
+      - name: Create corresponding source bundle
+        run: bash scripts/create-source-bundle.sh source-archives artifacts
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: source-inputs
+          path: source-archives/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-sources
+          path: artifacts/*-sources.tar.xz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  build:
+    name: ${{ matrix.target }}
+    needs: source
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x86_64
+            runner: windows-2022
+          - target: macos-aarch64
+            runner: macos-15
+          - target: macos-x86_64
+            runner: macos-15-intel
+          - target: linux-x86_64-musl
+            runner: ubuntu-22.04
+          - target: linux-aarch64-musl
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: source-inputs
+          path: source-archives
+
+      - name: Install Linux build tools
+        if: startsWith(matrix.target, 'linux-')
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes autoconf automake bzip2 cmake file g++ libtool make musl-tools nasm ninja-build openssl pkg-config xz-utils
+
+      - name: Install macOS build tools
+        if: startsWith(matrix.target, 'macos-')
+        shell: bash
+        run: brew install automake cmake libtool nasm ninja pkg-config
+
+      - name: Install Windows build tools
+        if: startsWith(matrix.target, 'windows-')
+        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2
+        with:
+          msystem: UCRT64
+          update: true
+          path-type: inherit
+          install: >-
+            autoconf automake base-devel bzip2 diffutils file gzip libtool make openssl patch pkgconf tar xz
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-toolchain
+
+      - name: Build and verify Windows profiles
+        if: startsWith(matrix.target, 'windows-')
+        shell: msys2 {0}
+        run: |
+          bash scripts/build.sh "${{ matrix.target }}" core source-archives artifacts
+          bash scripts/build.sh "${{ matrix.target }}" extended source-archives artifacts
+
+      - name: Build and verify Unix profiles
+        if: ${{ !startsWith(matrix.target, 'windows-') }}
+        shell: bash
+        run: |
+          bash scripts/build.sh "${{ matrix.target }}" core source-archives artifacts
+          bash scripts/build.sh "${{ matrix.target }}" extended source-archives artifacts
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ matrix.target }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  gate:
+    name: Build gate
+    needs: [source, build]
+    if: always()
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every source and target job
+        env:
+          SOURCE_RESULT: ${{ needs.source.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          test "$SOURCE_RESULT" = success
+          test "$BUILD_RESULT" = success

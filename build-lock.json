@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "ffmpegVersion": "8.1.2",
+  "distributionRevision": 1,
+  "source": {
+    "archiveName": "ffmpeg-8.1.2.tar.xz",
+    "url": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz",
+    "sha256": "464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c"
+  },
+  "macosMinimumVersion": "11.0",
+  "windowsMinimumVersion": "10",
+  "targets": [
+    {
+      "id": "windows-x86_64",
+      "platform": "windows",
+      "architecture": "x86_64",
+      "libc": null,
+      "runner": "windows-2022",
+      "archiveFormat": "zip"
+    },
+    {
+      "id": "macos-aarch64",
+      "platform": "macos",
+      "architecture": "aarch64",
+      "libc": null,
+      "runner": "macos-15",
+      "archiveFormat": "tar.xz"
+    },
+    {
+      "id": "macos-x86_64",
+      "platform": "macos",
+      "architecture": "x86_64",
+      "libc": null,
+      "runner": "macos-15-intel",
+      "archiveFormat": "tar.xz"
+    },
+    {
+      "id": "linux-x86_64-musl",
+      "platform": "linux",
+      "architecture": "x86_64",
+      "libc": "musl",
+      "runner": "ubuntu-22.04",
+      "archiveFormat": "tar.xz"
+    },
+    {
+      "id": "linux-aarch64-musl",
+      "platform": "linux",
+      "architecture": "aarch64",
+      "libc": "musl",
+      "runner": "ubuntu-22.04-arm",
+      "archiveFormat": "tar.xz"
+    }
+  ],
+  "profiles": {
+    "core": {
+      "license": "LGPL-2.1-or-later",
+      "network": false,
+      "externalDependencies": []
+    },
+    "extended": {
+      "license": "LGPL-3.0-or-later",
+      "network": true,
+      "externalDependencies": [
+        "mbedtls",
+        "lame",
+        "libogg",
+        "libvorbis",
+        "libopus",
+        "libvpx"
+      ]
+    }
+  }
+}

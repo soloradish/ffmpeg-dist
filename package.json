@@ -1,0 +1,14 @@
+{
+  "name": "ffmpeg-dist",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.16.0"
+  },
+  "scripts": {
+    "test": "node --test",
+    "validate:locks": "node scripts/validate-locks.mjs",
+    "validate:workflows": "node scripts/validate-workflows.mjs"
+  }
+}

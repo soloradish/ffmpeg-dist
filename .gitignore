@@ -1,0 +1,7 @@
+.work/
+artifacts/
+release-assets/
+source-archives/
+node_modules/
+*.log
+.DS_Store

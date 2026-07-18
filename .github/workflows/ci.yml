@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Metadata and workflow tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm test
+      - run: npm run validate:locks
+      - run: npm run validate:workflows
+
+  build:
+    name: Native build matrix
+    needs: unit
+    uses: ./.github/workflows/_build.yml
+
+  gate:
+    name: Gate
+    needs: [unit, build]
+    if: always()
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Require metadata and native builds
+        env:
+          UNIT_RESULT: ${{ needs.unit.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          test "$UNIT_RESULT" = success
+          test "$BUILD_RESULT" = success

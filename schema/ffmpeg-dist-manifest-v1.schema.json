@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/soloradish/ffmpeg-dist/blob/main/schema/ffmpeg-dist-manifest-v1.schema.json",
+  "title": "ffmpeg-dist release manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "releaseTag", "ffmpegVersion", "distributionRevision", "source", "assets"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "releaseTag": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+-r[1-9][0-9]*$" },
+    "ffmpegVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "distributionRevision": { "type": "integer", "minimum": 1 },
+    "source": { "$ref": "#/$defs/file" },
+    "assets": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": {
+        "allOf": [
+          { "$ref": "#/$defs/file" },
+          {
+            "type": "object",
+            "required": ["profile", "target", "platform", "architecture", "libc", "license", "archiveFormat", "executables"]
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "file": {
+      "type": "object",
+      "required": ["fileName", "downloadUrl", "sha256", "size"],
+      "properties": {
+        "fileName": { "type": "string", "minLength": 1 },
+        "downloadUrl": { "type": "string", "format": "uri" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "size": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}
