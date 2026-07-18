@@ -61,6 +61,7 @@ ffmpeg_source="$(source_directory "ffmpeg-$version")"
 
 cc=cc
 cxx=c++
+ffmpeg_cxx=c++
 ar=ar
 ranlib=ranlib
 strip_tool=strip
@@ -74,15 +75,17 @@ case "$target" in
   windows-x86_64)
     cc=gcc
     cxx=g++
+    ffmpeg_cxx=g++
     host_arg="--host=x86_64-w64-mingw32"
     ffmpeg_target_args=(--target-os=mingw32 --arch=x86_64)
     vpx_target=x86_64-win64-gcc
     extra_cflags="-D_WIN32_WINNT=0x0A00"
-    extra_ldflags="-static-libgcc"
+    extra_ldflags="-static -static-libgcc"
     ;;
   macos-aarch64)
     cc=clang
     cxx=clang++
+    ffmpeg_cxx=clang++
     ffmpeg_target_args=(--target-os=darwin --arch=aarch64)
     vpx_target=arm64-darwin24-gcc
     export MACOSX_DEPLOYMENT_TARGET="$(node -e 'const lock=require(process.argv[1]); process.stdout.write(lock.macosMinimumVersion)' "$root/build-lock.json")"
@@ -90,6 +93,7 @@ case "$target" in
   macos-x86_64)
     cc=clang
     cxx=clang++
+    ffmpeg_cxx=clang++
     ffmpeg_target_args=(--target-os=darwin --arch=x86_64)
     vpx_target=x86_64-darwin24-gcc
     export MACOSX_DEPLOYMENT_TARGET="$(node -e 'const lock=require(process.argv[1]); process.stdout.write(lock.macosMinimumVersion)' "$root/build-lock.json")"
@@ -99,6 +103,7 @@ case "$target" in
     # libvpx also produces an auxiliary C++ rate-control archive. FFmpeg only
     # links libvpx.a, whose objects are still compiled with musl-gcc.
     cxx=g++
+    ffmpeg_cxx=musl-gcc
     ffmpeg_target_args=(--target-os=linux --arch=x86_64)
     vpx_target=x86_64-linux-gcc
     extra_ldflags="-static"
@@ -108,6 +113,7 @@ case "$target" in
     # See the linux-x86_64-musl note above. The final FFmpeg binaries never
     # link the auxiliary C++ archive and are verified as fully static.
     cxx=g++
+    ffmpeg_cxx=musl-gcc
     ffmpeg_target_args=(--target-os=linux --arch=aarch64)
     vpx_target=arm64-linux-gcc
     extra_ldflags="-static"
@@ -147,9 +153,9 @@ build_vorbis() {
   # The upstream aggregate target also links test_sharedbook with a legacy
   # Apple linker flag. Build only the libraries consumed by FFmpeg; the
   # extended-profile verification performs an actual Vorbis round trip.
-  make -C lib -j"$jobs"
-  make -C include install
-  make -C lib install
+  make -C lib -j"$jobs" libvorbis.la libvorbisfile.la libvorbisenc.la
+  make -C include/vorbis install-vorbisincludeHEADERS
+  make -C lib install-libLTLIBRARIES
   make install-pkgconfigDATA
   popd >/dev/null
 }
@@ -207,6 +213,11 @@ fi
 
 configure_args=(
   --prefix="$prefix"
+  --cc="$cc"
+  --cxx="$ffmpeg_cxx"
+  --ar="$ar"
+  --ranlib="$ranlib"
+  --strip="$strip_tool"
   --disable-debug
   --disable-doc
   --disable-ffplay

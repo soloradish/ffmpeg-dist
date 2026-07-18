@@ -35,7 +35,7 @@ else
   done
   grep -Eq '^[[:space:]]*https$' <<<"$protocols"
   encoders="$($ffmpeg -hide_banner -encoders 2>&1)"
-  for encoder in libmp3lame libopus libvorbis libvpx_vp8 libvpx_vp9; do
+  for encoder in libmp3lame libopus libvorbis libvpx libvpx-vp9; do
     grep -q "$encoder" <<<"$encoders" || { echo "Missing encoder $encoder" >&2; exit 1; }
   done
 fi
@@ -88,6 +88,8 @@ fi
 
 case "$target" in
   linux-*)
+    grep -q -- '--cc=musl-gcc' <<<"$buildconf"
+    grep -q -- '--cxx=musl-gcc' <<<"$buildconf"
     file "$ffmpeg" | grep -Eqi 'statically linked|static-pie linked'
     if ldd "$ffmpeg" >"$fixtures/ldd.txt" 2>&1; then
       echo "Linux binary is unexpectedly dynamically linked." >&2
