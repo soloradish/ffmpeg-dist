@@ -13,15 +13,15 @@ ffprobe="$stage/bin/ffprobe$exe_suffix"
 
 test -x "$ffmpeg"
 test -x "$ffprobe"
-"$ffmpeg" -version | head -n 1 | grep -E "ffmpeg version n?$version([[:space:]]|$)"
-"$ffprobe" -version | head -n 1 | grep -E "ffprobe version n?$version([[:space:]]|$)"
-buildconf="$($ffmpeg -buildconf 2>&1)"
+"$ffmpeg" -version | tr -d '\r' | head -n 1 | grep -E "ffmpeg version n?$version([[:space:]]|$)"
+"$ffprobe" -version | tr -d '\r' | head -n 1 | grep -E "ffprobe version n?$version([[:space:]]|$)"
+buildconf="$($ffmpeg -buildconf 2>&1 | tr -d '\r')"
 if grep -Eq -- '--enable-(gpl|nonfree)' <<<"$buildconf"; then
   echo "Forbidden GPL or nonfree build flag detected." >&2
   exit 1
 fi
 
-protocols="$($ffmpeg -hide_banner -protocols 2>&1)"
+protocols="$($ffmpeg -hide_banner -protocols 2>&1 | tr -d '\r')"
 if [[ "$profile" == "core" ]]; then
   grep -q -- '--disable-network' <<<"$buildconf"
   grep -q -- '--disable-version3' <<<"$buildconf"
@@ -34,14 +34,14 @@ else
     grep -q -- "$flag" <<<"$buildconf" || { echo "Missing extended flag $flag" >&2; exit 1; }
   done
   grep -Eq '^[[:space:]]*https$' <<<"$protocols"
-  encoders="$($ffmpeg -hide_banner -encoders 2>&1)"
+  encoders="$($ffmpeg -hide_banner -encoders 2>&1 | tr -d '\r')"
   for encoder in libmp3lame libopus libvorbis libvpx libvpx-vp9; do
     grep -q "$encoder" <<<"$encoders" || { echo "Missing encoder $encoder" >&2; exit 1; }
   done
 fi
 
-demuxers="$($ffmpeg -hide_banner -demuxers 2>&1)"
-decoders="$($ffmpeg -hide_banner -decoders 2>&1)"
+demuxers="$($ffmpeg -hide_banner -demuxers 2>&1 | tr -d '\r')"
+decoders="$($ffmpeg -hide_banner -decoders 2>&1 | tr -d '\r')"
 for demuxer in mov matroska mp3 aac wav flac ogg; do
   grep -q "$demuxer" <<<"$demuxers" || { echo "Missing demuxer $demuxer" >&2; exit 1; }
 done

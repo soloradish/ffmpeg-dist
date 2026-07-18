@@ -15,6 +15,7 @@ test("native build scripts pin toolchains and avoid optional upstream programs",
   assert.match(build, /make -C lib install-libLTLIBRARIES/);
   assert.match(build, /extra_ldflags="-static -static-libgcc"/);
   assert.match(build, /extra_libs="-lws2_32 -lbcrypt"/);
+  assert.equal(verify.split("| tr -d '\\r'").length - 1, 7);
   assert.match(verify, /--cc=musl-gcc/);
   assert.match(verify, /libvpx-vp9/);
   assert.match(packageWindows, /GetFullPath\(\$Destination\)/);
