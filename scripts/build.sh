@@ -64,7 +64,7 @@ cxx=c++
 ar=ar
 ranlib=ranlib
 strip_tool=strip
-host_args=()
+host_arg=""
 ffmpeg_target_args=()
 vpx_target=""
 extra_cflags=""
@@ -74,7 +74,7 @@ case "$target" in
   windows-x86_64)
     cc=gcc
     cxx=g++
-    host_args=(--host=x86_64-w64-mingw32)
+    host_arg="--host=x86_64-w64-mingw32"
     ffmpeg_target_args=(--target-os=mingw32 --arch=x86_64)
     vpx_target=x86_64-win64-gcc
     extra_cflags="-D_WIN32_WINNT=0x0A00"
@@ -96,14 +96,18 @@ case "$target" in
     ;;
   linux-x86_64-musl)
     cc=musl-gcc
-    cxx=musl-gcc
+    # libvpx also produces an auxiliary C++ rate-control archive. FFmpeg only
+    # links libvpx.a, whose objects are still compiled with musl-gcc.
+    cxx=g++
     ffmpeg_target_args=(--target-os=linux --arch=x86_64)
     vpx_target=x86_64-linux-gcc
     extra_ldflags="-static"
     ;;
   linux-aarch64-musl)
     cc=musl-gcc
-    cxx=musl-gcc
+    # See the linux-x86_64-musl note above. The final FFmpeg binaries never
+    # link the auxiliary C++ archive and are verified as fully static.
+    cxx=g++
     ffmpeg_target_args=(--target-os=linux --arch=aarch64)
     vpx_target=arm64-linux-gcc
     extra_ldflags="-static"
@@ -119,7 +123,11 @@ build_autotools() {
   local source_path="$1"
   shift
   pushd "$source_path" >/dev/null
-  ./configure --prefix="$prefix" "${host_args[@]}" --disable-shared --enable-static "$@"
+  if [[ -n "$host_arg" ]]; then
+    ./configure --prefix="$prefix" "$host_arg" --disable-shared --enable-static "$@"
+  else
+    ./configure --prefix="$prefix" --disable-shared --enable-static "$@"
+  fi
   make -j"$jobs"
   make install
   popd >/dev/null
@@ -220,7 +228,11 @@ printf '%s\n' "${configure_args[@]}" > "$configure_args_file"
 mkdir -p "$build_root/ffmpeg"
 pushd "$build_root/ffmpeg" >/dev/null
 "$ffmpeg_source/configure" "${configure_args[@]}"
-make -j"$jobs" ffmpeg ffprobe
+if [[ "$target" == windows-* ]]; then
+  make -j"$jobs" ffmpeg.exe ffprobe.exe
+else
+  make -j"$jobs" ffmpeg ffprobe
+fi
 popd >/dev/null
 
 exe_suffix=""
