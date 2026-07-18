@@ -7,6 +7,7 @@ import { root } from "../scripts/lib/config.mjs";
 test("native build scripts pin toolchains and avoid optional upstream programs", async () => {
   const build = await readFile(path.join(root, "scripts/build.sh"), "utf8");
   const verify = await readFile(path.join(root, "scripts/verify-build.sh"), "utf8");
+  const packageWindows = await readFile(path.join(root, "scripts/package-windows.ps1"), "utf8");
 
   assert.match(build, /--cc="\$cc"/);
   assert.match(build, /--cxx="\$ffmpeg_cxx"/);
@@ -15,4 +16,6 @@ test("native build scripts pin toolchains and avoid optional upstream programs",
   assert.match(build, /extra_ldflags="-static -static-libgcc"/);
   assert.match(verify, /--cc=musl-gcc/);
   assert.match(verify, /libvpx-vp9/);
+  assert.match(packageWindows, /GetFullPath\(\$Destination\)/);
+  assert.match(packageWindows, /DestinationPath \$resolvedDestination/);
 });
