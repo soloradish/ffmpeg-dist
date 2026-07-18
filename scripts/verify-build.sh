@@ -11,10 +11,10 @@ exe_suffix=""
 ffmpeg="$stage/bin/ffmpeg$exe_suffix"
 ffprobe="$stage/bin/ffprobe$exe_suffix"
 
-test -x "$ffmpeg"
-test -x "$ffprobe"
-"$ffmpeg" -version | tr -d '\r' | head -n 1 | grep -E "ffmpeg version n?$version([[:space:]]|$)"
-"$ffprobe" -version | tr -d '\r' | head -n 1 | grep -E "ffprobe version n?$version([[:space:]]|$)"
+test -x "$ffmpeg" || { echo "Missing executable: $ffmpeg" >&2; exit 1; }
+test -x "$ffprobe" || { echo "Missing executable: $ffprobe" >&2; exit 1; }
+"$ffmpeg" -version | tr -d '\r' | head -n 1 | grep -E "ffmpeg version n?$version([[:space:]]|$)" || { echo "Unexpected ffmpeg version." >&2; exit 1; }
+"$ffprobe" -version | tr -d '\r' | head -n 1 | grep -E "ffprobe version n?$version([[:space:]]|$)" || { echo "Unexpected ffprobe version." >&2; exit 1; }
 buildconf="$($ffmpeg -buildconf 2>&1 | tr -d '\r')"
 if grep -Eq -- '--enable-(gpl|nonfree)' <<<"$buildconf"; then
   echo "Forbidden GPL or nonfree build flag detected." >&2
@@ -23,8 +23,8 @@ fi
 
 protocols="$($ffmpeg -hide_banner -protocols 2>&1 | tr -d '\r')"
 if [[ "$profile" == "core" ]]; then
-  grep -q -- '--disable-network' <<<"$buildconf"
-  grep -q -- '--disable-version3' <<<"$buildconf"
+  grep -q -- '--disable-network' <<<"$buildconf" || { echo "Core is missing --disable-network." >&2; exit 1; }
+  grep -q -- '--disable-version3' <<<"$buildconf" || { echo "Core is missing --disable-version3." >&2; exit 1; }
   if grep -Eq '^[[:space:]]*https?$' <<<"$protocols"; then
     echo "Core unexpectedly exposes HTTP(S)." >&2
     exit 1
@@ -33,7 +33,8 @@ else
   for flag in --enable-version3 --enable-mbedtls --enable-libmp3lame --enable-libopus --enable-libvorbis --enable-libvpx; do
     grep -q -- "$flag" <<<"$buildconf" || { echo "Missing extended flag $flag" >&2; exit 1; }
   done
-  grep -Eq '^[[:space:]]*https$' <<<"$protocols"
+  # The local TLS round trip below is the authoritative HTTPS capability test.
+  # It is stronger and less formatting-sensitive than parsing `ffmpeg -protocols`.
   encoders="$($ffmpeg -hide_banner -encoders 2>&1 | tr -d '\r')"
   for encoder in libmp3lame libopus libvorbis libvpx libvpx-vp9; do
     grep -q "$encoder" <<<"$encoders" || { echo "Missing encoder $encoder" >&2; exit 1; }
