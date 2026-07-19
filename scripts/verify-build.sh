@@ -83,7 +83,13 @@ if [[ "$profile" == "extended" ]]; then
   "$ffmpeg" -v error -i "$fixtures/vp8.webm" -f null -
   "$ffmpeg" -v error -i "$fixtures/vp9.webm" -f null -
 
-  openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -keyout "$fixtures/key.pem" -out "$fixtures/cert.pem" >/dev/null 2>&1
+  # MSYS2 rewrites slash-prefixed arguments when invoking Windows programs.
+  # OpenSSL subjects are not paths, so preserve /CN=localhost on Windows.
+  if [[ "$target" == windows-* ]]; then
+    MSYS_NO_PATHCONV=1 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -keyout "$fixtures/key.pem" -out "$fixtures/cert.pem"
+  else
+    openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -keyout "$fixtures/key.pem" -out "$fixtures/cert.pem"
+  fi
   node "$root/scripts/https-server.mjs" "$fixtures" "$fixtures/cert.pem" "$fixtures/key.pem" 18443 >"$fixtures/server.log" 2>&1 &
   server_pid=$!
   trap 'kill "$server_pid" 2>/dev/null || true' EXIT

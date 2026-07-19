@@ -130,6 +130,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
           compression-level: 0
+          include-hidden-files: true
 
   gate:
     name: Build gate

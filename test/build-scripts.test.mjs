@@ -20,6 +20,7 @@ test("native build scripts pin toolchains and avoid optional upstream programs",
   assert.match(verify, /libvpx-vp9/);
   assert.match(verify, /-i https:\/\/127\.0\.0\.1:18443\/tone\.wav/);
   assert.match(verify, /trap on_error ERR/);
+  assert.match(verify, /MSYS_NO_PATHCONV=1 openssl req/);
   assert.match(packageWindows, /GetFullPath\(\$Destination\)/);
   assert.match(packageWindows, /DestinationPath \$resolvedDestination/);
 });
