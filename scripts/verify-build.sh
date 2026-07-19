@@ -11,6 +11,17 @@ exe_suffix=""
 ffmpeg="$stage/bin/ffmpeg$exe_suffix"
 ffprobe="$stage/bin/ffprobe$exe_suffix"
 
+on_error() {
+  local status=$?
+  {
+    printf 'Verification failed.\n'
+    printf 'target=%s profile=%s exit=%s line=%s\n' "$target" "$profile" "$status" "${BASH_LINENO[0]:-unknown}"
+    printf 'command=%s\n' "${BASH_COMMAND:-unknown}"
+  } | tee "$stage/VERIFY-FAILURE.txt" >&2
+  exit "$status"
+}
+trap on_error ERR
+
 test -x "$ffmpeg" || { echo "Missing executable: $ffmpeg" >&2; exit 1; }
 test -x "$ffprobe" || { echo "Missing executable: $ffprobe" >&2; exit 1; }
 "$ffmpeg" -version | tr -d '\r' | head -n 1 | grep -E "ffmpeg version n?$version([[:space:]]|$)" || { echo "Unexpected ffmpeg version." >&2; exit 1; }
@@ -114,4 +125,5 @@ esac
 
 test -f "$stage/BUILD-INFO.json"
 test -f "$stage/LICENSES/FFmpeg-LICENSE.md"
+trap - ERR
 echo "Verified $profile for $target."
