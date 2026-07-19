@@ -84,9 +84,10 @@ if [[ "$profile" == "extended" ]]; then
   "$ffmpeg" -v error -i "$fixtures/vp9.webm" -f null -
 
   # MSYS2 rewrites slash-prefixed arguments when invoking Windows programs.
-  # OpenSSL subjects are not paths, so preserve /CN=localhost on Windows.
+  # Exclude only the OpenSSL subject: key and certificate paths still need
+  # normal MSYS2-to-Windows conversion.
   if [[ "$target" == windows-* ]]; then
-    MSYS_NO_PATHCONV=1 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -keyout "$fixtures/key.pem" -out "$fixtures/cert.pem"
+    MSYS2_ARG_CONV_EXCL='/CN=localhost' openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -keyout "$fixtures/key.pem" -out "$fixtures/cert.pem"
   else
     openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -keyout "$fixtures/key.pem" -out "$fixtures/cert.pem"
   fi
