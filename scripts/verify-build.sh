@@ -11,20 +11,31 @@ exe_suffix=""
 ffmpeg="$stage/bin/ffmpeg$exe_suffix"
 ffprobe="$stage/bin/ffprobe$exe_suffix"
 
-test -x "$ffmpeg"
-test -x "$ffprobe"
-"$ffmpeg" -version | head -n 1 | grep -E "ffmpeg version n?$version([[:space:]]|$)"
-"$ffprobe" -version | head -n 1 | grep -E "ffprobe version n?$version([[:space:]]|$)"
-buildconf="$($ffmpeg -buildconf 2>&1)"
+on_error() {
+  local status=$?
+  {
+    printf 'Verification failed.\n'
+    printf 'target=%s profile=%s exit=%s line=%s\n' "$target" "$profile" "$status" "${BASH_LINENO[0]:-unknown}"
+    printf 'command=%s\n' "${BASH_COMMAND:-unknown}"
+  } | tee "$stage/VERIFY-FAILURE.txt" >&2
+  exit "$status"
+}
+trap on_error ERR
+
+test -x "$ffmpeg" || { echo "Missing executable: $ffmpeg" >&2; exit 1; }
+test -x "$ffprobe" || { echo "Missing executable: $ffprobe" >&2; exit 1; }
+"$ffmpeg" -version | tr -d '\r' | head -n 1 | grep -E "ffmpeg version n?$version([[:space:]]|$)" || { echo "Unexpected ffmpeg version." >&2; exit 1; }
+"$ffprobe" -version | tr -d '\r' | head -n 1 | grep -E "ffprobe version n?$version([[:space:]]|$)" || { echo "Unexpected ffprobe version." >&2; exit 1; }
+buildconf="$($ffmpeg -buildconf 2>&1 | tr -d '\r')"
 if grep -Eq -- '--enable-(gpl|nonfree)' <<<"$buildconf"; then
   echo "Forbidden GPL or nonfree build flag detected." >&2
   exit 1
 fi
 
-protocols="$($ffmpeg -hide_banner -protocols 2>&1)"
+protocols="$($ffmpeg -hide_banner -protocols 2>&1 | tr -d '\r')"
 if [[ "$profile" == "core" ]]; then
-  grep -q -- '--disable-network' <<<"$buildconf"
-  grep -q -- '--disable-version3' <<<"$buildconf"
+  grep -q -- '--disable-network' <<<"$buildconf" || { echo "Core is missing --disable-network." >&2; exit 1; }
+  grep -q -- '--disable-version3' <<<"$buildconf" || { echo "Core is missing --disable-version3." >&2; exit 1; }
   if grep -Eq '^[[:space:]]*https?$' <<<"$protocols"; then
     echo "Core unexpectedly exposes HTTP(S)." >&2
     exit 1
@@ -33,15 +44,16 @@ else
   for flag in --enable-version3 --enable-mbedtls --enable-libmp3lame --enable-libopus --enable-libvorbis --enable-libvpx; do
     grep -q -- "$flag" <<<"$buildconf" || { echo "Missing extended flag $flag" >&2; exit 1; }
   done
-  grep -Eq '^[[:space:]]*https$' <<<"$protocols"
-  encoders="$($ffmpeg -hide_banner -encoders 2>&1)"
-  for encoder in libmp3lame libopus libvorbis libvpx_vp8 libvpx_vp9; do
+  # The local TLS round trip below is the authoritative HTTPS capability test.
+  # It is stronger and less formatting-sensitive than parsing `ffmpeg -protocols`.
+  encoders="$($ffmpeg -hide_banner -encoders 2>&1 | tr -d '\r')"
+  for encoder in libmp3lame libopus libvorbis libvpx libvpx-vp9; do
     grep -q "$encoder" <<<"$encoders" || { echo "Missing encoder $encoder" >&2; exit 1; }
   done
 fi
 
-demuxers="$($ffmpeg -hide_banner -demuxers 2>&1)"
-decoders="$($ffmpeg -hide_banner -decoders 2>&1)"
+demuxers="$($ffmpeg -hide_banner -demuxers 2>&1 | tr -d '\r')"
+decoders="$($ffmpeg -hide_banner -decoders 2>&1 | tr -d '\r')"
 for demuxer in mov matroska mp3 aac wav flac ogg; do
   grep -q "$demuxer" <<<"$demuxers" || { echo "Missing demuxer $demuxer" >&2; exit 1; }
 done
@@ -71,7 +83,14 @@ if [[ "$profile" == "extended" ]]; then
   "$ffmpeg" -v error -i "$fixtures/vp8.webm" -f null -
   "$ffmpeg" -v error -i "$fixtures/vp9.webm" -f null -
 
-  openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -keyout "$fixtures/key.pem" -out "$fixtures/cert.pem" >/dev/null 2>&1
+  # MSYS2 rewrites slash-prefixed arguments when invoking Windows programs.
+  # Exclude only the OpenSSL subject: key and certificate paths still need
+  # normal MSYS2-to-Windows conversion.
+  if [[ "$target" == windows-* ]]; then
+    MSYS2_ARG_CONV_EXCL='/CN=localhost' openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -keyout "$fixtures/key.pem" -out "$fixtures/cert.pem"
+  else
+    openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' -keyout "$fixtures/key.pem" -out "$fixtures/cert.pem"
+  fi
   node "$root/scripts/https-server.mjs" "$fixtures" "$fixtures/cert.pem" "$fixtures/key.pem" 18443 >"$fixtures/server.log" 2>&1 &
   server_pid=$!
   trap 'kill "$server_pid" 2>/dev/null || true' EXIT
@@ -88,6 +107,8 @@ fi
 
 case "$target" in
   linux-*)
+    grep -q -- '--cc=musl-gcc' <<<"$buildconf"
+    grep -q -- '--cxx=musl-gcc' <<<"$buildconf"
     file "$ffmpeg" | grep -Eqi 'statically linked|static-pie linked'
     if ldd "$ffmpeg" >"$fixtures/ldd.txt" 2>&1; then
       echo "Linux binary is unexpectedly dynamically linked." >&2
@@ -111,4 +132,5 @@ esac
 
 test -f "$stage/BUILD-INFO.json"
 test -f "$stage/LICENSES/FFmpeg-LICENSE.md"
+trap - ERR
 echo "Verified $profile for $target."

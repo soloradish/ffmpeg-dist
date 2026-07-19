@@ -61,28 +61,35 @@ ffmpeg_source="$(source_directory "ffmpeg-$version")"
 
 cc=cc
 cxx=c++
+ffmpeg_cxx=c++
 ar=ar
 ranlib=ranlib
 strip_tool=strip
-host_args=()
+host_arg=""
 ffmpeg_target_args=()
 vpx_target=""
 extra_cflags=""
 extra_ldflags=""
+extra_libs=""
 
 case "$target" in
   windows-x86_64)
     cc=gcc
     cxx=g++
-    host_args=(--host=x86_64-w64-mingw32)
+    ffmpeg_cxx=g++
+    host_arg="--host=x86_64-w64-mingw32"
     ffmpeg_target_args=(--target-os=mingw32 --arch=x86_64)
     vpx_target=x86_64-win64-gcc
     extra_cflags="-D_WIN32_WINNT=0x0A00"
-    extra_ldflags="-static-libgcc"
+    extra_ldflags="-static -static-libgcc"
+    # Mbed TLS links these Windows system libraries, but its generated
+    # pkg-config files do not expose them for static consumers.
+    extra_libs="-lws2_32 -lbcrypt"
     ;;
   macos-aarch64)
     cc=clang
     cxx=clang++
+    ffmpeg_cxx=clang++
     ffmpeg_target_args=(--target-os=darwin --arch=aarch64)
     vpx_target=arm64-darwin24-gcc
     export MACOSX_DEPLOYMENT_TARGET="$(node -e 'const lock=require(process.argv[1]); process.stdout.write(lock.macosMinimumVersion)' "$root/build-lock.json")"
@@ -90,20 +97,27 @@ case "$target" in
   macos-x86_64)
     cc=clang
     cxx=clang++
+    ffmpeg_cxx=clang++
     ffmpeg_target_args=(--target-os=darwin --arch=x86_64)
     vpx_target=x86_64-darwin24-gcc
     export MACOSX_DEPLOYMENT_TARGET="$(node -e 'const lock=require(process.argv[1]); process.stdout.write(lock.macosMinimumVersion)' "$root/build-lock.json")"
     ;;
   linux-x86_64-musl)
     cc=musl-gcc
-    cxx=musl-gcc
+    # libvpx also produces an auxiliary C++ rate-control archive. FFmpeg only
+    # links libvpx.a, whose objects are still compiled with musl-gcc.
+    cxx=g++
+    ffmpeg_cxx=musl-gcc
     ffmpeg_target_args=(--target-os=linux --arch=x86_64)
     vpx_target=x86_64-linux-gcc
     extra_ldflags="-static"
     ;;
   linux-aarch64-musl)
     cc=musl-gcc
-    cxx=musl-gcc
+    # See the linux-x86_64-musl note above. The final FFmpeg binaries never
+    # link the auxiliary C++ archive and are verified as fully static.
+    cxx=g++
+    ffmpeg_cxx=musl-gcc
     ffmpeg_target_args=(--target-os=linux --arch=aarch64)
     vpx_target=arm64-linux-gcc
     extra_ldflags="-static"
@@ -119,9 +133,34 @@ build_autotools() {
   local source_path="$1"
   shift
   pushd "$source_path" >/dev/null
-  ./configure --prefix="$prefix" "${host_args[@]}" --disable-shared --enable-static "$@"
+  if [[ -n "$host_arg" ]]; then
+    ./configure --prefix="$prefix" "$host_arg" --disable-shared --enable-static "$@"
+  else
+    ./configure --prefix="$prefix" --disable-shared --enable-static "$@"
+  fi
   make -j"$jobs"
   make install
+  popd >/dev/null
+}
+
+build_vorbis() {
+  local source_path="$1"
+  pushd "$source_path" >/dev/null
+  if [[ -n "$host_arg" ]]; then
+    ./configure --prefix="$prefix" "$host_arg" --disable-shared --enable-static \
+      --with-ogg="$prefix" --disable-examples --disable-docs
+  else
+    ./configure --prefix="$prefix" --disable-shared --enable-static \
+      --with-ogg="$prefix" --disable-examples --disable-docs
+  fi
+
+  # The upstream aggregate target also links test_sharedbook with a legacy
+  # Apple linker flag. Build only the libraries consumed by FFmpeg; the
+  # extended-profile verification performs an actual Vorbis round trip.
+  make -C lib -j"$jobs" libvorbis.la libvorbisfile.la libvorbisenc.la
+  make -C include/vorbis install-vorbisincludeHEADERS
+  make -C lib install-libLTLIBRARIES
+  make install-pkgconfigDATA
   popd >/dev/null
 }
 
@@ -154,7 +193,7 @@ if [[ "$profile" == "extended" ]]; then
 
   build_autotools "$lame_source" --disable-frontend --disable-decoder
   build_autotools "$ogg_source"
-  build_autotools "$vorbis_source" --with-ogg="$prefix" --disable-examples --disable-docs
+  build_vorbis "$vorbis_source"
   build_autotools "$opus_source" --disable-doc --disable-extra-programs
 
   mkdir -p "$build_root/libvpx"
@@ -178,6 +217,11 @@ fi
 
 configure_args=(
   --prefix="$prefix"
+  --cc="$cc"
+  --cxx="$ffmpeg_cxx"
+  --ar="$ar"
+  --ranlib="$ranlib"
+  --strip="$strip_tool"
   --disable-debug
   --disable-doc
   --disable-ffplay
@@ -215,12 +259,19 @@ fi
 if [[ "$profile" == "core" && -n "$extra_ldflags" ]]; then
   configure_args+=("--extra-ldflags=$extra_ldflags")
 fi
+if [[ "$profile" == "extended" && -n "$extra_libs" ]]; then
+  configure_args+=("--extra-libs=$extra_libs")
+fi
 
 printf '%s\n' "${configure_args[@]}" > "$configure_args_file"
 mkdir -p "$build_root/ffmpeg"
 pushd "$build_root/ffmpeg" >/dev/null
 "$ffmpeg_source/configure" "${configure_args[@]}"
-make -j"$jobs" ffmpeg ffprobe
+if [[ "$target" == windows-* ]]; then
+  make -j"$jobs" ffmpeg.exe ffprobe.exe
+else
+  make -j"$jobs" ffmpeg ffprobe
+fi
 popd >/dev/null
 
 exe_suffix=""
